@@ -1,0 +1,13 @@
+{
+  "name": "api-transacciones-full",
+  "private": true,
+  "version": "1.0.0",
+  "devDependencies": {
+    "serverless": "^4.0.0"
+  },
+  "scripts": {
+    "deploy": "serverless deploy",
+    "remove": "serverless remove",
+    "print": "serverless print"
+  }
+}
