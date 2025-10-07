@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>API Transacciones - Documentación</title>
+<style>
+body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial;margin:0;background:#0b1220;color:#fff}
+.wrap{max-width:900px;margin:40px auto;padding:16px}
+h1{font-size:28px;margin:0 0 16px}
+p{opacity:.9}
+.card{background:#0f172a;border:1px solid #1f2a44;border-radius:16px;padding:20px;margin-top:16px}
+label{display:block;margin:10px 0 6px;font-weight:600}
+input{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #24304c;background:#0b1220;color:#fff}
+.row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.btns{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap}
+button,.btn{background:#6aa1ff;color:#001;font-weight:700;padding:10px 14px;border-radius:10px;border:none;cursor:pointer}
+button:hover,.btn:hover{filter:brightness(1.1)}
+.links{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+small{opacity:.7}
+a{color:#9dd4ff}
+.muted{opacity:.8}
+.footer{margin-top:24px;opacity:.6;font-size:13px}
+</style></head>
+<body>
+<div class="wrap">
+  <h1>API Transacciones – Docs</h1>
+  <p class="muted">Súbelo a S3 como sitio estático o ábrelo local. Usa el formulario para abrir Redoc o Swagger con tu API Gateway.</p>
+  <div class="card">
+    <div class="row">
+      <div><label for="apiId">API ID (API Gateway)</label><input id="apiId" placeholder="p.ej. aln4z3dlj1"></div>
+      <div><label for="region">Región</label><input id="region" placeholder="us-east-1" value="us-east-1"></div>
+      <div><label for="stage">Stage</label><input id="stage" placeholder="dev (o vacío si usas $default)" value="dev"></div>
+    </div>
+    <div class="btns">
+      <button onclick="openRedoc()">Abrir Redoc</button>
+      <button onclick="openSwagger()">Abrir Swagger UI</button>
+      <a class="btn" href="./openapi-local.yaml" target="_blank">Ver OpenAPI (YAML)</a>
+    </div>
+    <div class="links"><small>Tip: si tu stage es <b>$default</b>, deja el campo vacío.</small></div>
+  </div>
+  <div class="footer">Incluye Redoc, Swagger, OpenAPI y script de deploy a S3.</div>
+</div>
+<script>
+function qs(sel){ return document.querySelector(sel); }
+function save(k,v){ try{ localStorage.setItem(k,v||""); }catch(e){} }
+function load(k){ try{ return localStorage.getItem(k)||""; }catch(e){ return "";} }
+["apiId","region","stage"].forEach(id=>{ qs("#"+id).value = load(id) || qs("#"+id).value; });
+["apiId","region","stage"].forEach(id=>{ qs("#"+id).addEventListener("input", e=> save(id, e.target.value)); });
+function buildQS(){ const apiId=(qs("#apiId").value||"").trim(); const region=(qs("#region").value||"").trim(); const stage=(qs("#stage").value||"").trim(); const p=new URLSearchParams({apiId,region,stage}); return p.toString();}
+function openRedoc(){ window.open("./redoc.html?"+buildQS(), "_blank"); }
+function openSwagger(){ window.open("./swagger.html?"+buildQS(), "_blank"); }
+</script>
+</body></html>

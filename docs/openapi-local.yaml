@@ -1,0 +1,202 @@
+openapi: 3.0.3
+info:
+  title: API Transacciones
+  version: "1.0.0"
+  description: |
+    Documentación navegable para la API de Transacciones/Comercios.
+    Ajusta **apiId/region/stage** en la barra superior para apuntar a tu API Gateway.
+servers:
+  - url: https://{restapi_id}.execute-api.{region}.amazonaws.com/{stage}
+    variables:
+      restapi_id: { default: aln4z3dlj1 }
+      region: { default: us-east-1 }
+      stage: { default: dev }
+paths:
+  /import/transacciones:
+    post:
+      summary: Importar transacciones (lista)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Transaccion'
+      responses:
+        '200':
+          description: OK
+  /import/comercios:
+    post:
+      summary: Importar comercios (detalle o agregados)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: array
+                  items: { $ref: '#/components/schemas/ComercioDetalle' }
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items:
+                        oneOf:
+                          - $ref: '#/components/schemas/ComercioDetalle'
+                          - $ref: '#/components/schemas/ComercioAgregado'
+      responses:
+        '200':
+          description: OK
+  /transacciones/buscar-por-id:
+    get:
+      summary: Buscar transacción por ID
+      parameters:
+        - name: IDTransaccion
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+        '404': { description: No encontrada }
+  /transacciones/buscar-cliente:
+    get:
+      summary: Buscar por IDCliente (con rango por mes si no envías fechas)
+      parameters:
+        - name: IDCliente
+          in: query
+          required: true
+          schema: { type: string }
+        - name: fecha
+          in: query
+          required: false
+          description: Mes (YYYY-MM)
+          schema: { type: string, example: "2025-01" }
+        - name: desde
+          in: query
+          required: false
+          description: Inicio (YYYY-MM-DD)
+          schema: { type: string, example: "2025-01-01" }
+        - name: hasta
+          in: query
+          required: false
+          description: Fin (YYYY-MM-DD)
+          schema: { type: string, example: "2025-01-31" }
+      responses:
+        '200': { description: OK }
+  /transacciones/buscar-comercio:
+    get:
+      summary: Buscar por IDComercio (con rango por mes si no envías fechas)
+      parameters:
+        - name: IDComercio
+          in: query
+          required: true
+          schema: { type: string }
+        - name: fecha
+          in: query
+          required: false
+          schema: { type: string }
+        - name: desde
+          in: query
+          required: false
+          schema: { type: string }
+        - name: hasta
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+  /transacciones/buscar-tarjeta:
+    get:
+      summary: Buscar por IDTarjeta (con rango por mes si no envías fechas)
+      parameters:
+        - name: IDTarjeta
+          in: query
+          required: true
+          schema: { type: string }
+        - name: fecha
+          in: query
+          required: false
+          schema: { type: string }
+        - name: desde
+          in: query
+          required: false
+          schema: { type: string }
+        - name: hasta
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+components:
+  schemas:
+    Transaccion:
+      type: object
+      required: [IDTransaccion, IDCliente, IDComercio, Fecha, Hora]
+      properties:
+        IDTransaccion: { type: string }
+        IDCliente: { type: integer }
+        ClienteID: { type: integer }
+        IDComercio: { type: integer }
+        ComercioID: { type: integer }
+        Fecha: { type: string, example: "2025-01-01" }
+        Hora: { type: string, example: "00:00:00" }
+        FechaHoraOrden: { type: string, example: "2025-01-01#00:00:00" }
+        FechaHoraISO: { type: string, example: "2025-01-01T00:00:00" }
+        IDTarjeta: { type: integer }
+        TarjetaID: { type: integer }
+        IDMoneda: { type: integer }
+        IDCanal: { type: integer }
+        IDEstado: { type: integer }
+        CodigoAutorizacion: { type: string }
+        Estado: { type: string }
+        Canal: { type: string }
+        CodigoMoneda: { type: string }
+        MontoBruto: { type: number, format: double }
+        TasaCambio: { type: number, format: double, nullable: true }
+        Monto: { type: number, format: double }
+        IndicadorAprobada: { type: integer }
+        LatenciaAutorizacionMs: { type: integer }
+        Fraude: { type: integer }
+        FechaCarga: { type: string }
+        NombreComercio: { type: string }
+        Sector: { type: string }
+        Producto: { type: string }
+        NombreCompleto: { type: string }
+        DNI: { type: string }
+        telefono: { type: string }
+        email: { type: string, format: email }
+        Tarjeta: { type: string }
+    ComercioDetalle:
+      type: object
+      required: [IDComercio]
+      properties:
+        IDComercio: { type: integer }
+        ComercioID: { type: integer }
+        NombreComercio: { type: string }
+        Sector: { type: string }
+        Producto: { type: string }
+    ComercioAgregado:
+      type: object
+      required: [Tipo, ID, Agregado, Grupo]
+      properties:
+        Tipo: { type: integer }
+        ID: { type: integer }
+        Agregado: { type: string, example: "Sector" }
+        Grupo: { type: string, example: "Agroindustria" }
+        Ene: { type: number, format: double }
+        Feb: { type: number, format: double }
+        Mar: { type: number, format: double }
+        Abr: { type: number, format: double }
+        May: { type: number, format: double }
+        Jun: { type: number, format: double }
+        Jul: { type: number, format: double }
+        Ago: { type: number, format: double }
+        Sep: { type: number, format: double }
+        Oct: { type: number, format: double }
+        Nov: { type: number, format: double }
+        Dic: { type: number, format: double }
+        Promedio: { type: number, format: double }
+        TotalMonto: { type: number, format: double }
+        TotalFraude: { type: number, format: double }
+        Composicion: { type: number, format: double }

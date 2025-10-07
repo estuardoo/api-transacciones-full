@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Swagger UI – API Transacciones</title>
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css"/>
+<style>body{margin:0}.topbar{position:fixed;top:0;left:0;right:0;z-index:9;background:#0f172a;color:#fff;padding:8px 12px;font:14px/1.4 sans-serif;display:flex;gap:8px;align-items:center}.topbar input{padding:6px 8px;border-radius:8px;border:1px solid #2b3a5c;background:#0b1220;color:#fff}.topbar button{padding:6px 10px;border-radius:8px;border:none;background:#6aa1ff;color:#001;font-weight:700;cursor:pointer}.wrap{height:56px}</style>
+</head>
+<body>
+<div class="topbar">
+  <span><b>Swagger UI</b></span>
+  <span>API ID:</span><input id="apiId" size="12">
+  <span>Región:</span><input id="region" size="10" value="us-east-1">
+  <span>Stage:</span><input id="stage" size="10" value="dev">
+  <button onclick="reload()">Aplicar</button>
+  <a href="./openapi-local.yaml" target="_blank" style="margin-left:auto;color:#9dd4ff">OpenAPI (YAML)</a>
+  <a href="./redoc.html" style="color:#9dd4ff">Redoc</a>
+</div>
+<div class="wrap"></div>
+<div id="swagger-ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script type="module">
+  const qs = new URLSearchParams(location.search);
+  const apiId = qs.get("apiId") || localStorage.getItem("apiId") || "";
+  const region = qs.get("region") || localStorage.getItem("region") || "us-east-1";
+  const stage = qs.get("stage") || localStorage.getItem("stage") || "dev";
+  document.getElementById("apiId").value = apiId;
+  document.getElementById("region").value = region;
+  document.getElementById("stage").value = stage;
+
+  function save(){
+    localStorage.setItem("apiId", document.getElementById("apiId").value);
+    localStorage.setItem("region", document.getElementById("region").value);
+    localStorage.setItem("stage", document.getElementById("stage").value);
+  }
+  window.reload = function(){ save(); location.search = "?apiId="+encodeURIComponent(apiIdEl().value)+"&region="+encodeURIComponent(regionEl().value)+"&stage="+encodeURIComponent(stageEl().value); }
+  function apiIdEl(){return document.getElementById("apiId")}
+  function regionEl(){return document.getElementById("region")}
+  function stageEl(){return document.getElementById("stage")}
+
+  async function loadSpec(){
+    const text = await (await fetch("./openapi-local.yaml")).text();
+    const yaml = (await import('https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.mjs')).default;
+    const spec = yaml.load(text);
+    const apiIdV = apiIdEl().value.trim();
+    const regionV = regionEl().value.trim() || "us-east-1";
+    const stageV = stageEl().value.trim();
+    const url = "https://" + (apiIdV||"{restapi_id}") + ".execute-api." + (regionV||"{region}") + ".amazonaws.com" + (stageV?("/"+stageV):"");
+    spec.servers = [{ url }];
+    window.ui = SwaggerUIBundle({
+      spec, dom_id: '#swagger-ui', deepLinking: true, presets: [SwaggerUIBundle.presets.apis], layout: "BaseLayout"
+    });
+  }
+  loadSpec();
+</script>
+</body></html>
