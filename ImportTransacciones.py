@@ -3,8 +3,11 @@ import os
 from datetime import datetime, timezone
 import boto3
 from decimal import Decimal
+from botocore.exceptions import ClientError
 
+TABLE_NAME = os.environ.get("TABLA_TRANSACCION", "TablaTransaccion")
 ddb = boto3.resource('dynamodb')
+table = ddb.Table(TABLE_NAME)
 
 def _resp(status, body):
     return {
@@ -21,111 +24,137 @@ def _to_int_or_none(x):
     except Exception:
         return None
 
-def _to_float_or_none(x):
+def _to_dec_or_none(x):
+    if x in (None, "", "NULL", "null"):
+        return None
     try:
-        if x in (None, "", "NULL", "null"):
+        s = str(x).strip().replace(" ", "").replace(",", "")
+        return Decimal(s)
+    except Exception:
+        try:
+            return Decimal(str(float(x)))
+        except Exception:
             return None
-        s = str(x).replace(" ", "").replace(",", "")
-        return float(s)
-    except Exception:
-        return None
 
-def _as_decimal_safe(v):
-    if v is None:
-        return None
-    return Decimal(str(v))
-
-def _build_fecha_fields(fecha, hora):
-    if not fecha:
-        return None, None
-    hora = hora or "00:00:00"
+def _parse_dt(fecha:str, hora:str):
+    if not fecha or not hora:
+        raise ValueError("Fecha y Hora son obligatorias")
     try:
-        dt = datetime.strptime(f"{fecha} {hora}", "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-        return f"{fecha}#{hora}", dt.strftime("%Y-%m-%dT%H:%M:%S%z") or dt.isoformat()
-    except Exception:
-        return f"{fecha}#{hora}", f"{fecha}T{hora}"
+        dt = datetime.fromisoformat(f"{fecha}T{hora}")
+    except ValueError:
+        try:
+            dt = datetime.strptime(f"{fecha} {hora}", "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            raise ValueError(f"Fecha/Hora inválidas: {fecha} {hora}")
+    return dt.replace(tzinfo=timezone.utc)
+
+def _fmt_hash(fecha, hora): return _parse_dt(fecha, hora).strftime("%Y-%m-%d#%H:%M:%S")
+def _fmt_iso (fecha, hora): return _parse_dt(fecha, hora).strftime("%Y-%m-%dT%H:%M:%S")
+
+STRING_FIELDS = [
+    "CodigoAutorizacion","Estado","Canal","CodigoMoneda",
+    "NombreComercio","Sector","Producto",
+    "NombreCompleto","DNI","telefono","email","Tarjeta"
+]
+DEC_FIELDS = ["MontoBruto","TasaCambio","Monto"]
+INT_FIELDS = ["IndicadorAprobada","LatenciaAutorizacionMs","Fraude"]
 
 def lambda_handler(event, context):
-    table_name = os.environ.get("TABLA_TRANSACCION", "TablaTransacciones")
-    table = ddb.Table(table_name)
-
     try:
-        body = event.get("body", "")
-        items = json.loads(body) if body else []
+        body = event.get("body")
+        if not body:
+            return _resp(400, {"ok": False, "msg": "Body vacío"})
+        items = json.loads(body)
         if isinstance(items, dict):
             items = items.get("data", [items])
         if not isinstance(items, list):
-            return _resp(400, {"ok": False, "error": "JSON debe ser lista o {'data': [...]}"})
+            return _resp(400, {"ok": False, "msg": "Se espera una lista o {'data': [...]}"})
     except Exception as e:
-        return _resp(400, {"ok": False, "error": f"JSON inválido: {e}"})
+        return _resp(400, {"ok": False, "msg": f"JSON inválido: {e}"})
 
     inserted = 0
-    with table.batch_writer(overwrite_by_pkeys=["IDTransaccion"]) as bw:
-        for it in items:
-            if not isinstance(it, dict):
-                continue
+    try:
+        with table.batch_writer(overwrite_by_pkeys=["IDTransaccion"]) as bw:
+            for it in items:
+                if not isinstance(it, dict):
+                    continue
+                it = dict(it)
 
-            clean = {}
+                # Normalización nombres nuevos y legacy
+                it.setdefault("IDTransaccion", it.get("TransaccionID"))
+                it.setdefault("IDCliente", it.get("ClienteID"))
+                it.setdefault("IDComercio", it.get("ComercioID"))
+                it.setdefault("IDTarjeta", it.get("TarjetaID"))
 
-            tid = it.get("IDTransaccion") or it.get("TransaccionID") or it.get("id") or it.get("Id")
-            if tid is None:
-                tid = f"{it.get('IDCliente','')}-{it.get('IDComercio','')}-{it.get('Fecha','')}-{it.get('Hora','')}"
-            clean["IDTransaccion"] = str(tid)
+                # Requeridos mínimos
+                required = ("IDTransaccion", "IDCliente", "IDComercio", "Fecha", "Hora")
+                if not all(k in it and it[k] not in (None, "") for k in required):
+                    # omitimos fila incompleta
+                    continue
 
-            for src, dst in [
-                ("IDCliente","IDCliente"), ("ClienteID","ClienteID"),
-                ("IDComercio","IDComercio"), ("ComercioID","ComercioID"),
-                ("IDTarjeta","IDTarjeta"), ("TarjetaID","TarjetaID"),
-                ("IDMoneda","IDMoneda"), ("IDCanal","IDCanal"), ("IDEstado","IDEstado")
-            ]:
-                v = _to_int_or_none(it.get(src))
-                if v is not None:
-                    clean[dst] = v
+                clean = {}
 
-            if "IDCliente" in clean and "ClienteID" not in clean:
-                clean["ClienteID"] = clean["IDCliente"]
-            if "IDComercio" in clean and "ComercioID" not in clean:
-                clean["ComercioID"] = clean["IDComercio"]
-            if "IDTarjeta" in clean and "TarjetaID" not in clean:
-                clean["TarjetaID"] = clean["IDTarjeta"]
+                # PK
+                clean["IDTransaccion"] = str(it["IDTransaccion"])
 
-            fecha = it.get("Fecha")
-            hora = it.get("Hora")
-            fh_orden, fh_iso = _build_fecha_fields(fecha, hora)
-            if fh_orden: clean["FechaHoraOrden"] = fh_orden
-            if fh_iso:   clean["FechaHoraISO"] = fh_iso
-            if fecha:    clean["Fecha"] = str(fecha)
-            if hora:     clean["Hora"] = str(hora)
+                # IDs (enteros) + espejos legacy
+                clean["IDCliente"]  = _to_int_or_none(it.get("IDCliente"))
+                clean["IDComercio"] = _to_int_or_none(it.get("IDComercio"))
+                if clean["IDCliente"] is not None:
+                    clean["ClienteID"] = clean["IDCliente"]
+                if clean["IDComercio"] is not None:
+                    clean["ComercioID"] = clean["IDComercio"]
 
-            for k in ["CodigoAutorizacion","Estado","Canal","CodigoMoneda",
-                      "NombreComercio","Sector","Producto",
-                      "NombreCompleto","DNI","telefono","email","Tarjeta"]:
-                v = it.get(k)
-                if v not in (None, ""):
-                    clean[k] = str(v).strip()
+                idt = _to_int_or_none(it.get("IDTarjeta"))
+                if idt is not None:
+                    clean["IDTarjeta"] = idt
+                    clean["TarjetaID"] = idt
 
-            for k in ["MontoBruto","TasaCambio","Monto"]:
-                fv = _to_float_or_none(it.get(k))
-                if fv is not None:
-                    clean[k] = _as_decimal_safe(fv)
+                # IDs opcionales
+                for k in ("IDMoneda","IDCanal","IDEstado"):
+                    v = _to_int_or_none(it.get(k))
+                    if v is not None:
+                        clean[k] = v
 
-            for k in ["IndicadorAprobada","LatenciaAutorizacionMs","Fraude"]:
-                iv = _to_int_or_none(it.get(k))
-                if iv is not None:
-                    clean[k] = iv
+                # Strings descriptivos
+                for k in STRING_FIELDS:
+                    v = it.get(k)
+                    if v not in (None, ""):
+                        clean[k] = str(v).strip()
 
-            fc = it.get("FechaCarga")
-            if fc:
-                try:
-                    if " " in str(fc) and "T" not in str(fc):
-                        dt = datetime.strptime(str(fc), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-                        clean["FechaCarga"] = dt.strftime("%Y-%m-%dT%H:%M:%S%z")
-                    else:
+                # Montos y números
+                for k in DEC_FIELDS:
+                    dv = _to_dec_or_none(it.get(k))
+                    if dv is not None:
+                        clean[k] = dv
+                for k in INT_FIELDS:
+                    iv = _to_int_or_none(it.get(k))
+                    if iv is not None:
+                        clean[k] = iv
+
+                # Fecha/Hora y derivados
+                clean["Fecha"] = str(it["Fecha"])
+                clean["Hora"]  = str(it["Hora"])
+                clean["FechaHoraOrden"] = _fmt_hash(clean["Fecha"], clean["Hora"])
+                clean["FechaHoraISO"]   = _fmt_iso (clean["Fecha"], clean["Hora"])
+
+                # FechaCarga opcional
+                fc = it.get("FechaCarga")
+                if fc:
+                    try:
+                        s = str(fc)
+                        if " " in s and "T" not in s:
+                            dt = datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                            clean["FechaCarga"] = dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+                        else:
+                            clean["FechaCarga"] = s
+                    except Exception:
                         clean["FechaCarga"] = str(fc)
-                except Exception:
-                    clean["FechaCarga"] = str(fc)
 
-            bw.put_item(Item=clean)
-            inserted += 1
+                # Escribir
+                bw.put_item(Item={k: v for k, v in clean.items() if v is not None})
+                inserted += 1
+    except ClientError as e:
+        return _resp(500, {"ok": False, "msg": e.response["Error"]["Message"]})
 
-    return _resp(200, {"ok": True, "inserted": inserted, "table": table_name})
+    return _resp(200, {"ok": True, "insertados": inserted, "tabla": TABLE_NAME})

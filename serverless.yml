@@ -1,115 +1,73 @@
-service: api-transacciones-full
-
-frameworkVersion: '4'
+service: api-transacciones-abc
 
 provider:
   name: aws
-  runtime: python3.11
+  runtime: python3.12
   region: ${env:AWS_REGION, 'us-east-1'}
   stage: ${env:STAGE, 'dev'}
-  timeout: 30
-  memorySize: 256
   iam:
-    role:
-      statements:
-        - Effect: Allow
-          Action:
-            - dynamodb:DescribeTable
-            - dynamodb:Query
-            - dynamodb:Scan
-            - dynamodb:GetItem
-            - dynamodb:BatchWriteItem
-            - dynamodb:PutItem
-            - dynamodb:UpdateItem
-          Resource: "*"
-
-package:
-  individually: true
-  patterns:
-    - "!node_modules/**"
-    - "!venv/**"
+    role: ${env:LAMBDA_IAM_ROLE_ARN, 'arn:aws:iam::102362304326:role/LabRole'}
+  environment:
+    TABLA_TRANSACCION: ${env:TABLA_TRANSACCION, 'TablaTransaccion'}
+    TABLA_COMERCIO:    ${env:TABLA_COMERCIO, 'TablaComercio'}
+  httpApi:
+    cors: true
 
 functions:
-  importTransacciones:
-    handler: ImportTransacciones.lambda_handler
-    environment:
-      TABLA_TRANSACCION: ${env:TABLA_TRANSACCION, 'TablaTransacciones'}
-    events:
-      - httpApi:
-          path: /import/transacciones
-          method: post
-
-  importComercios:
+  ImportComercios:
     handler: ImportComercios.lambda_handler
-    environment:
-      TABLA_COMERCIO: ${env:TABLA_COMERCIO, 'TablaComercio'}
-      TABLA_COMERCIOS_AGREG: ${env:TABLA_COMERCIOS_AGREG, 'TablaComercios'}
     events:
-      - httpApi:
-          path: /import/comercios
-          method: post
-
-  buscarCliente:
-    handler: BusquedaCliente.lambda_handler
-    environment:
-      TABLA_TRANSACCION: ${env:TABLA_TRANSACCION, 'TablaTransacciones'}
+      - httpApi: {"path": "/import/comercios", "method": "POST"}
+  ImportTransacciones:
+    handler: ImportTransacciones.lambda_handler
     events:
-      - httpApi:
-          path: /busqueda/cliente
-          method: get
-
-  buscarComercio:
-    handler: BusquedaComercio.lambda_handler
-    environment:
-      TABLA_TRANSACCION: ${env:TABLA_TRANSACCION, 'TablaTransacciones'}
-    events:
-      - httpApi:
-          path: /busqueda/comercio
-          method: get
-
-  buscarTarjeta:
-    handler: BusquedaTarjeta.lambda_handler
-    environment:
-      TABLA_TRANSACCION: ${env:TABLA_TRANSACCION, 'TablaTransacciones'}
-    events:
-      - httpApi:
-          path: /busqueda/tarjeta
-          method: get
-
-  buscarTransaccion:
+      - httpApi: {"path": "/import/transacciones", "method": "POST"}
+  BusquedaTransaccion:
     handler: BusquedaTransaccion.lambda_handler
-    environment:
-      TABLA_TRANSACCION: ${env:TABLA_TRANSACCION, 'TablaTransacciones'}
     events:
-      - httpApi:
-          path: /busqueda/transaccion
-          method: get
+      - httpApi: {"path": "/transacciones/buscar-por-id", "method": "GET"}
+  BusquedaCliente:
+    handler: BusquedaCliente.lambda_handler
+    events:
+      - httpApi: {"path": "/transacciones/buscar-cliente", "method": "GET"}
+  BusquedaTarjeta:
+    handler: BusquedaTarjeta.lambda_handler
+    events:
+      - httpApi: {"path": "/transacciones/buscar-tarjeta", "method": "GET"}
+  BusquedaComercio:
+    handler: BusquedaComercio.lambda_handler
+    events:
+      - httpApi: {"path": "/transacciones/buscar-comercio", "method": "GET"}
 
 resources:
   Resources:
-    TablaTransacciones:
+    TablaComercio:
       Type: AWS::DynamoDB::Table
       Properties:
-        TableName: ${env:TABLA_TRANSACCION, 'TablaTransacciones'}
+        TableName: ${env:TABLA_COMERCIO, 'TablaComercio'}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: IDComercio
+            AttributeType: N
+        KeySchema:
+          - AttributeName: IDComercio
+            KeyType: HASH
+
+    TablaTransaccion:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${env:TABLA_TRANSACCION, 'TablaTransaccion'}
         BillingMode: PAY_PER_REQUEST
         AttributeDefinitions:
           - AttributeName: IDTransaccion
             AttributeType: S
           - AttributeName: IDCliente
             AttributeType: N
-          - AttributeName: ClienteID
-            AttributeType: N
           - AttributeName: IDComercio
-            AttributeType: N
-          - AttributeName: ComercioID
             AttributeType: N
           - AttributeName: IDTarjeta
             AttributeType: N
-          - AttributeName: TarjetaID
-            AttributeType: N
           - AttributeName: FechaHoraOrden
-            AttributeType: S
-          - AttributeName: FechaHoraISO
             AttributeType: S
         KeySchema:
           - AttributeName: IDTransaccion
@@ -121,61 +79,18 @@ resources:
                 KeyType: HASH
               - AttributeName: FechaHoraOrden
                 KeyType: RANGE
-            Projection:
-              ProjectionType: ALL
-          - IndexName: GSI_Cliente_Fecha
-            KeySchema:
-              - AttributeName: ClienteID
-                KeyType: HASH
-              - AttributeName: FechaHoraISO
-                KeyType: RANGE
-            Projection:
-              ProjectionType: ALL
+            Projection: {"ProjectionType": "ALL"}
           - IndexName: GSI_IDComercio_Fecha
             KeySchema:
               - AttributeName: IDComercio
                 KeyType: HASH
               - AttributeName: FechaHoraOrden
                 KeyType: RANGE
-            Projection:
-              ProjectionType: ALL
-          - IndexName: GSI_Comercio_Fecha
-            KeySchema:
-              - AttributeName: ComercioID
-                KeyType: HASH
-              - AttributeName: FechaHoraISO
-                KeyType: RANGE
-            Projection:
-              ProjectionType: ALL
+            Projection: {"ProjectionType": "ALL"}
           - IndexName: GSI_IDTarjeta_Fecha
             KeySchema:
               - AttributeName: IDTarjeta
                 KeyType: HASH
               - AttributeName: FechaHoraOrden
                 KeyType: RANGE
-            Projection:
-              ProjectionType: ALL
-          - IndexName: GSI_Tarjeta_Fecha
-            KeySchema:
-              - AttributeName: TarjetaID
-                KeyType: HASH
-              - AttributeName: FechaHoraISO
-                KeyType: RANGE
-            Projection:
-              ProjectionType: ALL
-
-    TablaComerciosAgreg:
-      Type: AWS::DynamoDB::Table
-      Properties:
-        TableName: ${env:TABLA_COMERCIOS_AGREG, 'TablaComercios'}
-        BillingMode: PAY_PER_REQUEST
-        AttributeDefinitions:
-          - AttributeName: Tipo
-            AttributeType: N
-          - AttributeName: ID
-            AttributeType: N
-        KeySchema:
-          - AttributeName: Tipo
-            KeyType: HASH
-          - AttributeName: ID
-            KeyType: RANGE
+            Projection: {"ProjectionType": "ALL"}
