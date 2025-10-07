@@ -34,8 +34,8 @@ def lambda_handler(event, context):
     table_detalle_name = os.environ.get("TABLA_COMERCIO", "TablaComercio")
     table_agreg_name = os.environ.get("TABLA_COMERCIOS_AGREG", "TablaComercios")
 
-    table_det = ddb.Table(table_detalle_name)
-    table_ag = ddb.Table(table_agreg_name)
+    table_det = boto3.resource('dynamodb').Table(table_detalle_name)
+    table_ag = boto3.resource('dynamodb').Table(table_agreg_name)
 
     try:
         body = event.get("body", "")
@@ -55,7 +55,6 @@ def lambda_handler(event, context):
 
     ins_det, ins_agr = 0, 0
 
-    # Escritura de agregados (Tipo+ID)
     with table_ag.batch_writer(overwrite_by_pkeys=["Tipo","ID"]) as bw_ag, \
          table_det.batch_writer(overwrite_by_pkeys=["IDComercio"]) as bw_det:
 
@@ -63,7 +62,6 @@ def lambda_handler(event, context):
             if not isinstance(it, dict):
                 continue
 
-            # Detección de fila de agregados mensuales
             if all(k in it for k in ["Tipo","ID","Agregado","Grupo"]):
                 row = {
                     "Tipo": _to_int(it.get("Tipo")) or 0,
@@ -81,7 +79,6 @@ def lambda_handler(event, context):
                 ins_agr += 1
                 continue
 
-            # Fila de detalle de comercio (mantener compatibilidad)
             idc = it.get("IDComercio") or it.get("ComercioID")
             if idc is not None:
                 try:
@@ -90,11 +87,8 @@ def lambda_handler(event, context):
                     pass
                 row = dict(it)
                 row["IDComercio"] = idc
-                # normalizaciones suaves
                 if "ComercioID" not in row:
                     row["ComercioID"] = idc
-                # guardar tal cual (los tipos se preservan con Decimal en números si ya vienen como float)
-                # si quieres normalizar más campos, agrégalo aquí
                 bw_det.put_item(Item=row)
                 ins_det += 1
 

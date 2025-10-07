@@ -36,8 +36,6 @@ def _as_decimal_safe(v):
     return Decimal(str(v))
 
 def _build_fecha_fields(fecha, hora):
-    # FechaHoraOrden: YYYY-MM-DD#HH:MM:SS
-    # FechaHoraISO:   YYYY-MM-DDTHH:MM:SS (Z assumed UTC)
     if not fecha:
         return None, None
     hora = hora or "00:00:00"
@@ -55,7 +53,6 @@ def lambda_handler(event, context):
         body = event.get("body", "")
         items = json.loads(body) if body else []
         if isinstance(items, dict):
-            # permitir {"data":[...]} o un único item
             items = items.get("data", [items])
         if not isinstance(items, list):
             return _resp(400, {"ok": False, "error": "JSON debe ser lista o {'data': [...]}"})
@@ -70,14 +67,11 @@ def lambda_handler(event, context):
 
             clean = {}
 
-            # IDTransaccion requerido (string)
             tid = it.get("IDTransaccion") or it.get("TransaccionID") or it.get("id") or it.get("Id")
             if tid is None:
-                # intentar construirlo con otros campos (no recomendado, pero evita fallo)
                 tid = f"{it.get('IDCliente','')}-{it.get('IDComercio','')}-{it.get('Fecha','')}-{it.get('Hora','')}"
             clean["IDTransaccion"] = str(tid)
 
-            # IDs y mirrors
             for src, dst in [
                 ("IDCliente","IDCliente"), ("ClienteID","ClienteID"),
                 ("IDComercio","IDComercio"), ("ComercioID","ComercioID"),
@@ -88,7 +82,6 @@ def lambda_handler(event, context):
                 if v is not None:
                     clean[dst] = v
 
-            # mirrors si faltan
             if "IDCliente" in clean and "ClienteID" not in clean:
                 clean["ClienteID"] = clean["IDCliente"]
             if "IDComercio" in clean and "ComercioID" not in clean:
@@ -96,7 +89,6 @@ def lambda_handler(event, context):
             if "IDTarjeta" in clean and "TarjetaID" not in clean:
                 clean["TarjetaID"] = clean["IDTarjeta"]
 
-            # fecha/hora
             fecha = it.get("Fecha")
             hora = it.get("Hora")
             fh_orden, fh_iso = _build_fecha_fields(fecha, hora)
@@ -105,7 +97,6 @@ def lambda_handler(event, context):
             if fecha:    clean["Fecha"] = str(fecha)
             if hora:     clean["Hora"] = str(hora)
 
-            # strings
             for k in ["CodigoAutorizacion","Estado","Canal","CodigoMoneda",
                       "NombreComercio","Sector","Producto",
                       "NombreCompleto","DNI","telefono","email","Tarjeta"]:
@@ -113,7 +104,6 @@ def lambda_handler(event, context):
                 if v not in (None, ""):
                     clean[k] = str(v).strip()
 
-            # montos / numéricos
             for k in ["MontoBruto","TasaCambio","Monto"]:
                 fv = _to_float_or_none(it.get(k))
                 if fv is not None:
@@ -124,7 +114,6 @@ def lambda_handler(event, context):
                 if iv is not None:
                     clean[k] = iv
 
-            # FechaCarga
             fc = it.get("FechaCarga")
             if fc:
                 try:
