@@ -1,6 +1,6 @@
 service: api-transacciones-full
 
-frameworkVersion: '3'
+frameworkVersion: '>=3 <5'
 
 provider:
   name: aws
@@ -179,6 +179,3 @@ resources:
             KeyType: HASH
           - AttributeName: ID
             KeyType: RANGE
-
-# Nota: TablaComercio (detalle) se asume ya existente si la usas; si quieres crearla aquí,
-# puedes añadir otro recurso con PK IDComercio (N).
